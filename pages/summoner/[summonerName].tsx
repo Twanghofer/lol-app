@@ -1,33 +1,63 @@
 import SummonerDetail from "@/components/SummonerDetail";
-import { getSummonerByName, getSummonerMatches, Summoner } from "@/helpers/api";
+import {
+  getMatchesByIds,
+  getSummonerByName,
+  getSummonerMatchIds,
+} from "@/helpers/api";
+import { Summoner, SummonerMatch } from "@/types";
 import Head from "next/head";
 
 export async function getServerSideProps({
   params,
 }: {
   params: { summonerName: string };
-}) {
+}): Promise<{ props: SummonerPageProps }> {
   const { summonerName } = params;
   const [summoner, error] = await getSummonerByName(summonerName);
 
   if (summoner) {
-    const [stats, error] = await getSummonerMatches(summoner, 1);
-    return { props: { summoner, error, stats } };
+    const [matchIds, matchIdsError] = await getSummonerMatchIds(summoner, 15);
+    const [matchesWithDetails, matchesError] = await getMatchesByIds(matchIds);
+
+    const matches: SummonerMatch[] = matchesWithDetails.map((match) => {
+      const summonerInfo = match.info.participants.find(
+        (participant) => participant.puuid === summoner.puuid
+      )!;
+
+      return {
+        championName: summonerInfo.championName,
+        win: summonerInfo.win,
+        gameCreation: match.info.gameCreation,
+        weekday: new Date(match.info.gameCreation).toLocaleDateString("en", {
+          weekday: "long",
+        }),
+      };
+    });
+
+    return {
+      props: {
+        summoner,
+        matches,
+        error: matchIdsError || matchesError,
+      },
+    };
   }
 
-  return { props: { summoner, error: error } };
+  return { props: { error: error } };
 }
 
-export default function Home({
-  summoner,
-  stats,
-  error,
-}: {
+interface SummonerPageProps {
   summoner?: Summoner;
-  stats?: any;
+  matches?: SummonerMatch[];
   error?: string;
-}) {
-  const title = summoner?.name ? `${summoner.name} | LOL Stats` : "LOL Stats";
+}
+
+export default function SummonerPage({
+  summoner,
+  matches,
+  error,
+}: SummonerPageProps) {
+  const title = summoner?.name ? `${summoner.name} | LOL Fax` : "LOL Fax";
 
   return (
     <>
@@ -37,9 +67,11 @@ export default function Home({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
       <main className="p-5">
-        {stats}
-        {error}
-        {summoner ? <SummonerDetail {...{ summoner }} /> : error}
+        {summoner && matches?.length ? (
+          <SummonerDetail {...{ summoner, matches }} />
+        ) : (
+          error
+        )}
       </main>
     </>
   );
